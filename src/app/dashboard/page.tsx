@@ -71,7 +71,10 @@ export default function Dashboard() {
 
       const contentType = res.headers.get("content-type") || "";
       if (!contentType.includes("application/json")) {
-        throw new Error("Erro interno do servidor. Tente novamente.");
+        const text = await res.text();
+        const preview = text.slice(0, 300);
+        console.error("Non-JSON response:", res.status, preview);
+        throw new Error(`Erro ${res.status}: ${preview}`);
       }
 
       const data = await res.json();

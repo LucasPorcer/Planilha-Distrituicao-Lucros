@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getOpenAIClient } from "@/lib/openai";
 import { EXTRACT_FROM_IMAGE_PROMPT, EXTRACT_FROM_TEXT_PROMPT } from "@/lib/prompts";
 import { extractTextFromPDF } from "@/lib/pdf-parser";
-import { extractTextFromXLSX } from "@/lib/xlsx-parser";
 
 const XLSX_MIME =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -15,6 +14,28 @@ function validatePassword(req: NextRequest): boolean {
 
 function isImage(type: string): boolean {
   return type.startsWith("image/");
+}
+
+async function parseXlsx(buffer: Buffer): Promise<string> {
+  const ExcelJS = (await import("exceljs")).default;
+  const workbook = new ExcelJS.Workbook();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await workbook.xlsx.load(buffer as any);
+
+  const lines: string[] = [];
+  workbook.eachSheet((sheet) => {
+    lines.push(`=== ${sheet.name} ===`);
+    sheet.eachRow((row) => {
+      const values = row.values as (string | number | null | undefined)[];
+      const cells = values
+        .slice(1)
+        .map((v) => (v != null ? String(v) : ""))
+        .join(" | ");
+      if (cells.trim()) lines.push(cells);
+    });
+  });
+
+  return lines.join("\n");
 }
 
 export async function POST(req: NextRequest) {
@@ -30,6 +51,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Nenhum arquivo enviado" }, { status: 400 });
     }
 
+    console.log("[analyze] file:", file.name, "type:", file.type, "size:", file.size);
+
     const openai = getOpenAIClient();
     const buffer = Buffer.from(await file.arrayBuffer());
     const isPdf = file.type === "application/pdf";
@@ -38,9 +61,23 @@ export async function POST(req: NextRequest) {
     let responseText: string;
 
     if (isPdf || isXlsx) {
-      const text = isPdf
-        ? await extractTextFromPDF(buffer)
-        : await extractTextFromXLSX(buffer);
+      console.log("[analyze] extracting text from", isPdf ? "PDF" : "XLSX");
+
+      let text: string;
+      try {
+        text = isPdf
+          ? await extractTextFromPDF(buffer)
+          : await parseXlsx(buffer);
+      } catch (extractErr) {
+        console.error("[analyze] extraction error:", extractErr);
+        const msg = extractErr instanceof Error ? extractErr.message : String(extractErr);
+        return NextResponse.json(
+          { error: `Erro ao ler arquivo: ${msg}` },
+          { status: 422 }
+        );
+      }
+
+      console.log("[analyze] extracted text length:", text.length);
 
       if (!text.trim()) {
         return NextResponse.json(
@@ -98,6 +135,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    console.log("[analyze] AI response length:", responseText.length);
+
     const cleaned = responseText
       .replace(/```json\s*/g, "")
       .replace(/```\s*/g, "")
@@ -107,7 +146,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(parsed);
   } catch (err) {
-    console.error("Analyze error:", err);
+    console.error("[analyze] error:", err);
     const message = err instanceof Error ? err.message : "Erro interno";
     return NextResponse.json({ error: message }, { status: 500 });
   }
