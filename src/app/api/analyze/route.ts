@@ -2,11 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { getOpenAIClient } from "@/lib/openai";
 import { EXTRACT_FROM_IMAGE_PROMPT, EXTRACT_FROM_TEXT_PROMPT } from "@/lib/prompts";
 import { extractTextFromPDF } from "@/lib/pdf-parser";
+import { extractTextFromXLSX } from "@/lib/xlsx-parser";
+
+const XLSX_MIME =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 function validatePassword(req: NextRequest): boolean {
   const pw = req.headers.get("x-access-password") || "";
   const correct = process.env.ACCESS_PASSWORD || "anl2026";
   return pw === correct;
+}
+
+function isImage(type: string): boolean {
+  return type.startsWith("image/");
 }
 
 export async function POST(req: NextRequest) {
@@ -25,15 +33,18 @@ export async function POST(req: NextRequest) {
     const openai = getOpenAIClient();
     const buffer = Buffer.from(await file.arrayBuffer());
     const isPdf = file.type === "application/pdf";
+    const isXlsx = file.type === XLSX_MIME || file.name.endsWith(".xlsx");
 
     let responseText: string;
 
-    if (isPdf) {
-      const text = await extractTextFromPDF(buffer);
+    if (isPdf || isXlsx) {
+      const text = isPdf
+        ? await extractTextFromPDF(buffer)
+        : await extractTextFromXLSX(buffer);
 
       if (!text.trim()) {
         return NextResponse.json(
-          { error: "Não foi possível extrair texto do PDF. Tente enviar como imagem." },
+          { error: "Não foi possível extrair dados do arquivo. Tente enviar como imagem." },
           { status: 422 }
         );
       }
@@ -51,7 +62,7 @@ export async function POST(req: NextRequest) {
       });
 
       responseText = completion.choices[0]?.message?.content || "";
-    } else {
+    } else if (isImage(file.type)) {
       const base64 = buffer.toString("base64");
       const mimeType = file.type || "image/jpeg";
 
@@ -80,6 +91,11 @@ export async function POST(req: NextRequest) {
       });
 
       responseText = completion.choices[0]?.message?.content || "";
+    } else {
+      return NextResponse.json(
+        { error: "Formato de arquivo não suportado. Use PDF, Excel (.xlsx) ou imagem." },
+        { status: 400 }
+      );
     }
 
     const cleaned = responseText
