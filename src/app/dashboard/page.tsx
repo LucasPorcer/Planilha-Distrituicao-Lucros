@@ -61,7 +61,12 @@ export default function Dashboard() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const res = await fetch("/api/analyze", {
+      const isXlsx =
+        file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+        file.name.endsWith(".xlsx");
+      const endpoint = isXlsx ? "/api/analyze-xlsx" : "/api/analyze";
+
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "x-access-password": password },
         body: formData,

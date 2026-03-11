@@ -3,6 +3,9 @@
   "functions": {
     "src/app/api/analyze/route.ts": {
       "maxDuration": 60
+    },
+    "src/app/api/analyze-xlsx/route.ts": {
+      "maxDuration": 60
     }
   }
 }
