@@ -1,7 +1,6 @@
-import ExcelJS from "exceljs";
-
 export async function extractTextFromXLSX(buffer: Buffer): Promise<string> {
-  const workbook = new ExcelJS.Workbook();
+  const ExcelJS = await import("exceljs");
+  const workbook = new ExcelJS.default.Workbook();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await workbook.xlsx.load(buffer as any);
 

@@ -69,12 +69,16 @@ export default function Dashboard() {
 
       clearInterval(stepTimer);
 
-      if (!res.ok) {
-        const body = await res.json();
-        throw new Error(body.error || "Erro ao analisar extrato");
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        throw new Error("Erro interno do servidor. Tente novamente.");
       }
 
       const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Erro ao analisar extrato");
+      }
 
       if (!data.transactions || data.transactions.length === 0) {
         throw new Error("Nenhuma retirada encontrada no extrato");
